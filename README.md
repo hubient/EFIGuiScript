@@ -29,3 +29,13 @@ actual the reboot event is given only of a kde desktop is available you can canc
 as i don't have actual a gnome system i could not test a version working for gnome
  
 If you know some userfull extension please make a sugestion 
+
+### Screen Shots
+
+#### After start you will get a screen for the next boot
+![Next Boot Screen](doc/images/nextboot.png)
+
+#### If you leave the previouse screen you will get the standard boot screen
+leave the screens with <ESC> key or click on cancel if you don't like to chnage any thing
+![Standard Boot Screen](doc/images/standardboot.png)
+
