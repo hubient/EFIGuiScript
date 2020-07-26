@@ -10,9 +10,9 @@ The script helps you to choos easy from desktop to choose on a UEFI System the n
 ## Dependencies 
 
 I run it with the following tools it can run also with other versions but it's not tested with it-
-ksh         - as script language version (AT&T Research) 93u+ 2012-08-01
+bash        - as script language version 5.0.17(1)-release
 efimanager  - version 14
-zenity      - release 3.2
+yad         - release 0.36.2 (GTK+ 3.24.21)
 
 ## Recomandation for running it
 
@@ -32,10 +32,20 @@ If you know some userfull extension please make a sugestion
 
 ### Screen Shots
 
-#### After start you will get a screen for the next boot
-![Next Boot Screen](doc/images/nextboot.png)
+#### After start you will get a screen for the next boot and standad boot to choose
+On <ESC> you can leave without any changes.
+On <RETURN> you apply change.
+![Next Boot Screen](doc/images/choosboot.png)
 
-#### If you leave the previouse screen you will get the standard boot screen
-leave the screens with <ESC> key or click on cancel if you don't like to chnage any thing
-![Standard Boot Screen](doc/images/standardboot.png)
 
+## Changes
+
+* v0.2 -> v0.3  date 26.Jul 2020
+    1. change from tool zenity to yad 
+    2. change from ksh to bash
+    3. make single gui no more 2 gui's to handle
+    4. add application icon
+    
+    ![application icon](imagesource/EFIGuiScript.svg)
+
+                    
