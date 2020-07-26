@@ -1,40 +1,44 @@
-#!/bin/ksh
+#!/bin/bash
 #  Name: chooseEFIBoot.sh
 #  Date: 22.7.2020
-VERSION="0.2"
+VERSION="0.3"
 #  Description:
-#   Script for easy chnage the next boot in EFI 
-#   And or lets you set the standad boot
+#   Script for easy change the next boot in EFI 
+#   and or lets you set the standad boot
 #
 #  Depenecies:
-#   ksh         must be installed in /bin/ksh (I use actual version ((AT&T Research) 93u+ 2012-08-01)
-#   zenity      must be installed for to use the gui it needs also to be in the path it is running with version 3.32.0
+#   bash        must be installed in /bin/bash 
+#   yad         must be installed for to use the gui it needs also to be in the path it is running with version 0.36.2 (GTK+ 3.24.21)
 #   efibootmgr  must be installed i use the version 14 
 #
 #   configuration to set:
 #   /etc/sudoers must contain and entry:<user> ALL = (root) NOPASSWD:/usr/sbin/efibootmgr
 #               Where <user> is your login userid  
+#
+#   changed:
+#       26.7.2020   VERSION=0.3 Remove zenity for gui and use now yad instead
+#                   No more ksh required normal bash works now
 #######################################################################################
 
-# Setup for the windows sizes
-WIDTH="600"
-HEIGHT="500"
 
-CHANGED="false"
+# setup variables for global usage
+# Setup for the windows sizes
+WIDTH="800"
+HEIGHT="500"
 
 PRG="$0"
 PRG=${PRG#*/}
 PRG=${PRG%.sh}
+PRGPATH="${0%/*}"
+PRGPATH=${PRGPATH:="./"}
+
+EFI="sudo /usr/sbin/efibootmgr"
 
 IFS=" 
 "
 DEBUG="echo debug "
 DEBUG=""
 
-sbootList="FALSE empty"
-nbootList="FALSE empty"
-
-EFI="sudo /usr/sbin/efibootmgr"
 
 KDE_REBOOT="qdbus org.kde.ksmserver /KSMServer org.kde.KSMServerInterface.logout 1 1 1"
 GNOME_REBOOT=""
@@ -44,10 +48,16 @@ case "$XDG_CURRENT_DESKTOP" in
     KDE) REBOOT=${KDE_REBOOT};;
     GNOME) RBOOT=${GNOME_REBOOT};;
 esac
-        
+
 
 typeset -a filter
 export filter
+
+# ****************************************************************************************
+# Start with functions
+# ****************************************************************************************
+
+
 
 function usage {
 	cat <<EOF
@@ -61,6 +71,127 @@ Version : ${VERSION}
 	
 EOF
 } ### end usage
+
+
+function getEFIvalue {
+    typeset key="$1"
+    echo "$EFI_CACHE" | while read boot string
+    do
+        if [[ $boot == $key ]]
+        then
+            echo $string
+            return 0
+        fi
+    done
+    return 1
+} ## end getEFIvalue
+
+
+function calcBootOrder {
+    newBootFirst="$1"
+    BootOrder="$2"
+    newBootOrder="$newBootFirst"    
+    IFS=","
+	for boot in $BootOrder
+	do	
+		IFS=" 
+"
+		if [[ $boot != $newBootFirst ]]
+		then			
+			newBootOrder="${newBootOrder},$boot"
+		fi	
+	done
+        IFS=" 
+"
+	echo "${newBootOrder}"
+} ## end calcBootOrder
+    
+
+# Gives return level 0 when no change has done 
+# if change is done we return 10
+function readAndSet {
+    StandardBoot="$1"
+    NextBoot="$2"
+    BootOrder="$3"
+    CHANGED=FALSE
+    OIFS=${IFS}
+    export IFS="|
+"    
+    while read NB SB NR TEXT rest
+    do        
+        # echo $NB $SB $NR $TEXT
+        if [ "${NB}" = "TRUE" ]
+        then
+            if [ "${NR}" != "${NextBoot}" ]
+            then
+                echo "Next boot = $NR ${NextBoot} / $TEXT"
+                (IFS=" "
+                $DEBUG $EFI --bootnext $NR 1>&2
+                )
+                CHANGED="TRUE"
+            fi                    
+        fi
+        if [ "${SB}" = "TRUE" ]
+        then
+            if [ "${NR}" != "${StandardBoot}" ]
+            then
+                echo "Default boot = ($NR) / $TEXT"
+                echo "Boot order = ${BootOrder}"
+                newBootOrder=$(calcBootOrder $NR "$BootOrder")
+                echo "New Boot order = ${newBootOrder}"
+                ( IFS=" "
+                $DEBUG $EFI --bootorder $newBootOrder 1>&2
+                )
+                CHANGED="TRUE"
+            fi
+        fi
+    done
+    IFS=$OIFS
+    [ ${CHANGED} == "TRUE" ] && return 10 || return 0
+} # end readAndSet
+
+
+function prepateEFIList {
+    StandardBoot="$1"
+    NextBoot="$2"    
+    echo "$EFI_CACHE" | while read boot string    
+    do
+		if [[ $boot =~ Boot[0-9][0-9][0-9][0-9]* ]]
+		then
+            nr=${boot##Boot}
+			nr=${nr%\*}
+			SBOOT="FALSE"
+			NBOOT="FALSE"
+			if [[ $boot == "Boot${NextBoot}*" ]]
+			then
+				NBOOT="TRUE"
+			fi
+			if [[ $boot == "Boot${StandardBoot}*" ]]
+			then
+				SBOOT="TRUE"
+			fi
+			fiFound=false
+			for actfilter in ${filter[*]}
+			do 
+                if [[ $fiFound == "false" ]]
+                then
+                    if [[ "$nr $string" == *"${actfilter}"* ]] || [[ "$actfilter" == "allenries" ]]
+                    then
+                        fiFound=true
+                        echo $NBOOT
+                        echo $SBOOT
+                        echo $nr
+                        echo $string
+                    fi
+                fi
+            done
+		fi
+    done
+} # end function
+
+
+# Main Start getting values
+
 
 while [[ -n $1 ]]
 do
@@ -93,131 +224,32 @@ then
 	filter[0]="allenries"
 fi
 
-printf "filter %s\n" ${filter[*]}
+printf "filter =  %s\n" ${filter[*]}
 
 
-function readEfiIn {
-    sbootList=""
-    nbootList=""
-	$EFI | while read boot string
-	do
-		# echo $boot / $string / $findBoot
-		if [[ $boot == "BootCurrent:" ]]
-		then
-			CurrentBoot=$string
-		fi
-		if [[ $boot == "BootNext:" ]]
-		then
-			NextBoot=$string
-		fi
-		if [[ $boot == "BootOrder:" ]]
-		then
-			BootOrder=$string
-			StandardBoot=${string%%,*}
-		fi
+# cache the EFI Output
+export EFI_CACHE="$(${EFI})"
 
-		if [[ $boot =~ Boot[0-9][0-9][0-9][0-9]* ]]
-		then
-			nr=${boot##Boot}
-			nr=${nr%\*}
-			SBOOT="FALSE"
-			NBOOT="FALSE"
-			if [[ $boot == "Boot${StandardBoot}*" ]]
-			then
-				SBOOT="TRUE"
-				SBOOT_STRING="$string"
-			fi
-			if [[ $boot == "Boot${NextBoot:=${StandadBoot}}*" ]]
-			then
-				NBOOT="TRUE"
-				NBOOT_STRING="$string"
-			fi
+CurrentBoot=$(getEFIvalue "BootCurrent:")
+NextBoot=$(getEFIvalue "BootNext:")
+BootOrder=$(getEFIvalue "BootOrder:")
+StandardBoot=${BootOrder%%,*}
 
-			fiFound=false
-			echo filter=${filter[*]}
-			for actfilter in ${filter[*]}
-			do
-				if [[ $fiFound == "false" ]]
-				then
-					if [[ "$nr $string" == *"${actfilter}"* ]] || [[ "$actfilter" == "allenries" ]]
-					then
-						fiFound=true
-						export sbootList="$sbootList $SBOOT \"$nr $string\""
-						export nbootList="$nbootList $NBOOT \"$nr $string\""
-					fi
-				fi
-			done
-		fi
-	done
-} ## end readEfiIn
+# pipe all commands together
+prepateEFIList "${StandardBoot}" "${NextBoot}"  | 
+yad --title "Next and Standard boot"  --width=${WIDTH} --height=${HEIGHT} --on-top --center --list  \
+    --columns=4 \
+    --column="Next boot":RD \
+    --column="Default boot":RD \
+    --column="Boot Num" \
+    --column="Name" \
+    --print-all | 
+readAndSet "${StandardBoot}" "${NextBoot}" "${BootOrder}"
 
-readEfiIn
-
-
-LANG=C
-set -x      
-# NBOOT_STRING=$(echo ${NBOOT_STRING} | sed 's/\s/\\ /g')
-NBOOT_STRING="\"${NBOOT_STRING:=""}\""
-SBOOT_STRING="\"${SBOOT_STRING:=""}\""
-
-choosed=$(eval zenity --width=${WIDTH} --height=${HEIGHT} --list --radiolist \
-      --title '${PRG}\ ${VERSION}\ /\ next\ boot' \
-      --text "Select\ next\ boot\ enrty:\ actual\ \(${NextBoot:=none}${NextBoot:+\ }${NBOOT_STRING}\)" \
-      --column 'Select\ next\ boot:' \
-      --column 'Boot\ partition' \
-      ${nbootList} )
-      
-
-set +x
-if [[ -n $choosed ]]
+# we get a reurncode of 10 if we did change somthing
+if [ ${?} = "10" ]
 then
-	echo $choosed
-	choosedNum=${choosed%% *}
-	choosedText=${choosed#* }
-
-	$DEBUG $EFI --bootnext $choosedNum
-	CHANGED="true"
-else
-	echo "Skip nextboot"
-fi
-set -x
-choosed=$(eval zenity --width=${WIDTH} --height=${HEIGHT} --list --radiolist \
-      --title '${PRG}\ ${VERSION}\ /\ standad\ boot' \
-      --text "Standard=${StandardBoot}${StandardBoot:+\ }${SBOOT_STRING}" \
-      --column 'standard\ boot' \
-      --column 'Boot-Partition' \
-      ${sbootList} )
-set +x
-
-echo $choosed
-if [[ -n $choosed ]]
-then
-	choosedNum=${choosed%% *}
-	choosedText=${choosed#* }
-
-	NBOOT="TRUE"
-	echo "We boot standard with $choosed"
-	newBootOrder="$choosedNum"
-	IFS=","
-	for boot in $BootOrder
-	do
-		IFS=" 
-"
-		if [[ $boot != $choosedNum ]]
-		then
-			echo $boot
-			newBootOrder="${newBootOrder},$boot"
-		fi	
-	done
-	echo "New BootOrder = $newBootOrder"
-	echo "old BootOrder = $BootOrder"
-	$DEBUG $EFI --bootorder $newBootOrder
-	CHANGED="true"
-else
-	echo "Skip new bootorder"
-fi
-
-if [[ ${CHANGED} == "true" ]]
-then
-    $REBOOT
+     $REBOOT
+else 
+    echo "Not changed"
 fi
