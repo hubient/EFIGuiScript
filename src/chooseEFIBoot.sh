@@ -237,7 +237,11 @@ StandardBoot=${BootOrder%%,*}
 
 # pipe all commands together
 prepateEFIList "${StandardBoot}" "${NextBoot}"  | 
-yad --title "Next and Standard boot"  --width=${WIDTH} --height=${HEIGHT} --on-top --center --list  \
+yad --title "Next and Standard boot"  \
+    --width=${WIDTH} --height=${HEIGHT} \
+    --on-top --center \
+    --window-icon="${PRGPATH}/EFIGuiScript.png" \
+    --list  \
     --columns=4 \
     --column="Next boot":RD \
     --column="Default boot":RD \
