@@ -1,7 +1,7 @@
 #!/bin/bash
 #  Name: chooseEFIBoot.sh
 #  Date: 22.7.2020
-VERSION="0.3"
+VERSION="0.4"
 #  Description:
 #   Script for easy change the next boot in EFI 
 #   and or lets you set the standad boot
@@ -18,8 +18,31 @@ VERSION="0.3"
 #   changed:
 #       26.7.2020   VERSION=0.3 Remove zenity for gui and use now yad instead
 #                   No more ksh required normal bash works now
+#	27.7.2020   VESION=0.4 Add natianlisation plus de and de_CH as languages for the gui
 #######################################################################################
 
+######################################################################################
+# start default nationalsation.
+# set variable for natianalization where TR is used in the line.
+# So simple add a G_TITLE__<language>
+# <language> needs to be a LANG version supported but . and - replaced by _
+# valid will be de_CH_UTF_8 or de_CH_UTF or de_CH or simple de
+# but not de_CH.UTF-8 which will be the LANG setting.
+#####################################################################################
+G_TITLE__de="Nächter and Standard boot"
+G_COL1_TITLE__de="Nächster boot"
+G_COL2_TITLE__de="Normler boot"
+G_COL3_TITLE__de="Boot Nummer"
+G_COL4_TITLE__de="Name"
+G_TITLE__de_CH="nöchter and standard boot"
+G_COL1_TITLE__de_CH="nöchste Boot"
+G_COL2_TITLE__de_CH="normle Boot"
+G_COL3_TITLE__de_CH="Bootnummere"
+G_COL4_TITLE__de_CH="Name"
+######################################################################################
+# start default nationalsation.
+#####################################################################################
+LANG=${LANG:=en_US.UTF-8}
 
 # setup variables for global usage
 # Setup for the windows sizes
@@ -71,6 +94,37 @@ Version : ${VERSION}
 	
 EOF
 } ### end usage
+
+# translate a text for multilingual setting
+function TR {
+	IFS=""
+	KEY="$1"
+	DEFAULT="$2"
+	LANGTOUSE="${3}"
+	LANGTOUSE="${LANGTOUSE:=${LANG}}"
+	LANGTOUSE=${LANGTOUSE/./_}
+	LANGTOUSE=${LANGTOUSE/-/_}
+	LANGKEY="${KEY}${LANGTOUSE:+__}${LANGTOUSE}"
+	VALUE=${!LANGKEY}
+	if [ ! -z ${VALUE} ]
+	then
+		echo ${VALUE}
+	else
+		if [[ $LANGKEY == *__* ]]
+		then
+			LANGTOUSE_B=${LANGTOUSE}
+			LANGTOUSE=${LANGTOUSE%_*}
+			if [ ${LANGTOUSE_B} != ${LANGTOUSE} ] 
+			then
+				TR "$KEY" "$DEFAULT" "$LANGTOUSE"
+			else
+				echo ${DEFAULT}
+			fi
+		else
+			echo ${DEFAULT}
+		fi
+	fi
+} # end TR
 
 
 function getEFIvalue {
@@ -175,7 +229,7 @@ function prepateEFIList {
 			do 
                 if [[ $fiFound == "false" ]]
                 then
-                    if [[ "$nr $string" == *"${actfilter}"* ]] || [[ "$actfilter" == "allenries" ]]
+                    if [[ "$nr $string" == *"${actfilter}"* ]] || [[ "$actfilter" == "allentries" ]]
                     then
                         fiFound=true
                         echo $NBOOT
@@ -221,7 +275,7 @@ done
 
 if [[ ${#filter[*]} == 0 ]]
 then
-	filter[0]="allenries"
+	filter[0]="allentries"
 fi
 
 printf "filter =  %s\n" ${filter[*]}
@@ -237,16 +291,16 @@ StandardBoot=${BootOrder%%,*}
 
 # pipe all commands together
 prepateEFIList "${StandardBoot}" "${NextBoot}"  | 
-yad --title "Next and Standard boot"  \
+yad --title "$(TR G_TITLE 'Next and Standard boot')"  \
     --width=${WIDTH} --height=${HEIGHT} \
     --on-top --center \
     --window-icon="${PRGPATH}/EFIGuiScript.png" \
     --list  \
     --columns=4 \
-    --column="Next boot":RD \
-    --column="Default boot":RD \
-    --column="Boot Num" \
-    --column="Name" \
+    --column="$(TR G_COL1_TITLE 'Next boot')":RD \
+    --column="$(TR G_COL2_TITLE 'Default boot')":RD \
+    --column="$(TR G_COL3_TITLE 'Boot Num')" \
+    --column="$(TR G_COL4_TITLE 'Name')" \
     --print-all | 
 readAndSet "${StandardBoot}" "${NextBoot}" "${BootOrder}"
 
