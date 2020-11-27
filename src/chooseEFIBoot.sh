@@ -1,7 +1,7 @@
 #!/bin/bash
 #  Name: chooseEFIBoot.sh
 #  Date: 22.7.2020
-VERSION="0.4"
+VERSION="0.5"
 #  Description:
 #   Script for easy change the next boot in EFI 
 #   and or lets you set the standad boot
@@ -19,6 +19,7 @@ VERSION="0.4"
 #       26.7.2020   VERSION=0.3 Remove zenity for gui and use now yad instead
 #                   No more ksh required normal bash works now
 #	27.7.2020   VESION=0.4 Add natianlisation plus de and de_CH as languages for the gui
+#   27.11.2020  VERSION=0.5 Change reboot call in KDE
 #######################################################################################
 
 ######################################################################################
@@ -34,7 +35,7 @@ G_COL1_TITLE__de="Nächster boot"
 G_COL2_TITLE__de="Normler boot"
 G_COL3_TITLE__de="Boot Nummer"
 G_COL4_TITLE__de="Name"
-G_TITLE__de_CH="nöchter and standard boot"
+G_TITLE__de_CH="nöchste and standard boot"
 G_COL1_TITLE__de_CH="nöchste Boot"
 G_COL2_TITLE__de_CH="normle Boot"
 G_COL3_TITLE__de_CH="Bootnummere"
@@ -62,8 +63,10 @@ IFS="
 DEBUG="echo debug "
 DEBUG=""
 
-
-KDE_REBOOT="qdbus org.kde.ksmserver /KSMServer org.kde.KSMServerInterface.logout 1 1 1"
+# old version on kde
+# KDE_REBOOT="qdbus org.kde.ksmserver /KSMServer org.kde.KSMServerInterface.logout 1 1 1"
+# new version for KDE
+KDE_REBOOT="qdbus-qt5 org.kde.ksmserver /KSMServer org.kde.KSMServerInterface.logout 1 1 1"
 GNOME_REBOOT=""
 REBOOT=""
 
