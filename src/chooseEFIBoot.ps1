@@ -16,7 +16,7 @@ Param(
 )
 Import-Module -Name $PSScriptRoot\lib\Console
 Import-Module -Name $PSScriptRoot\lib\TestKeys
-
+Import-Module -Name $PSScriptRoot\lib\BootEntries
 
 if ( $HideConsole ) {
     Hide-Console
@@ -42,8 +42,8 @@ if (-not (New-Object Security.Principal.WindowsPrincipal([Security.Principal.Win
     Start-Process powershell -Verb runAs -ArgumentList $arguments
     exit
 }
-Remove-Variable  -Name bm*
-Remove-Variable  -Name msgTable
+Remove-Variable  -Name bm* -ErrorAction SilentlyContinue
+Remove-Variable  -Name msgTable -ErrorAction SilentlyContinue
 cls
 
 $Lang=Get-SystemLanguage
@@ -63,77 +63,11 @@ if($Language -ne "") {
 
 
 
-Function Get-Boot-Entries {    
-    $local:Configs = @() #Array contains the parsed objects
-    $local:NameArray = @()
-    $local:Pattern = '^(?<name>[a-zA-Z\-]*)?\s*(?<value>.*)?$'
-    $local:enum    =  bcdedit /enum firmware 
-    $local:Value   = ""
-    $local:Name    = ""
-    foreach ($item in $enum ){
-        if ( $item.trim() ){
-            $res = [regex]::matches( $item, $Pattern )				
-		    if ( -not($item.contains( '----------------------------')) ) {			
-			    if ( $res ){
-				    $Value = $res[0].Groups['value'].value 
-				    $Name  = $res[0].Groups['name'].value
-				    if ( $Value ){
-					    if ( $Name ){
-						    $PSO = [PSCustomObject]@{
-							    Name  = $Name
-							    Value = $Value
-						    }
-						    $NameArray += $PSO
-					    } else { # empty line means continues adding entries to the key                       
-						    if ( $NameArray.count ){
-							    ( $NameArray | Select-Object -last 1 ).Value += ";$Value"
-						    }
-					    }
-				    }            
-			    }
-		     }
-	    } else {
-		    if ( $NameArray ){            
-			    $local:Configs  += ,$NameArray
-			    $NameArray = @()            
-		    }
-	    }
-    }
-    if ( $NameArray ){        
-        $local:Configs  += ,$NameArray
-    }
-    $local:Configs    
-}
-
-function Calc-Boot-Order([Object[]]$Configs) {
-    $local:hashBootEntries = @{}
-    $local:displayorder = @('x')
-    $local:id = ""
-    $local:device = ""
-    $local:description = ""
-    $local:item = ""    
-    foreach ( $item in $Configs ){
-        $id = $item[1]    
-        if ( $id.Value -eq '{fwbootmgr}' ) {
-            $displayorder = $item | Where-Object {$_.Name -eq 'displayorder'}        
-        } else {           
-            $description = $item | Where-Object {$_.Name -eq 'description'}
-            $device = $item | Where-Object {$_.Name -eq 'device'}
-            $id = $item[1]
-            if ( $id.Value -match "^{.*}$" -eq $false) {            
-                $id = $item[0]
-            }        
-            $hashBootEntries.add($id.Value.Trim(),$description.Value)
-         }
-         # $item | Format-Table         
-    }
-    $local:bootOrder = $displayorder.Value -split ";"
-    @($local:bootOrder,$local:hashBootEntries)
-}
 
 
-$local:Configs = Get-Boot-Entries
-$local:bootOrder, $local:hashBootEntries = Calc-Boot-Order($local:Configs)
+
+$local:Configs = Get-BootEntries
+$local:bootOrder, $local:hashBootEntries = Get-BootOrder($local:Configs)
 
 # --------------------- Start Formular -----------------------------
 
@@ -172,9 +106,9 @@ $bmHiddenText.HeaderText = $msgTable.colHiddenHeaderText
 $bmBootManagerGrid.MultiSelect = $False
 $bmBootManagerGrid.Width = 700
 
-$bmBootManagerGrid.Columns.Add($bmNextBoot) | Out-Null
-$bmBootManagerGrid.Columns.Add($bmDefaultBoot) | Out-Null
-$bmBootManagerGrid.Columns.Add($bmText) | Out-Null
+$bmBootManagerGrid.Columns.Add($bmNextBoot)   | Out-Null
+$bmBootManagerGrid.Columns.Add($bmDefaultBoot)| Out-Null
+$bmBootManagerGrid.Columns.Add($bmText)       | Out-Null
 $bmBootManagerGrid.Columns.Add($bmHiddenText) | Out-Null
 
 
@@ -244,6 +178,7 @@ $bmBootManagerGrid.Add_CellContentClick({
             $cell.Value=$false
             $bmDefaultBoot = ""
             $allFalse = $true
+            
             for($i=0; $i -lt $bmBootManagerGrid.RowCount;$i++) {
                 if($bmBootManagerGrid.Rows[$i].Cells[$columnIndex].Value -eq $true) {
                     $allFalse = $false
@@ -251,13 +186,14 @@ $bmBootManagerGrid.Add_CellContentClick({
             }
             if( $allFalse -eq $true ) {
                 $cell.Value = $true
-                $script:bmDefaultBootName =""
+                $script:bmDefaultBootName = ""
             }
+            
         }
     }
     if ($columnIndex -eq 0) {
         if ($cell.Value -ne $true) {
-            Write-Host "Next Boot wurde $($rowIndex + 1) aktiviert!"
+            Write-Host "Next Boot wurde $($rowIndex + 1) aktiviert!"            
             for($i=0; $i -lt $bmBootManagerGrid.RowCount;$i++) {
                 if( $_.rowIndex -ne $i) {           
                     $bmBootManagerGrid.Rows[$i].Cells[$columnIndex].Value = $false
@@ -265,6 +201,7 @@ $bmBootManagerGrid.Add_CellContentClick({
             }
             $cell.Value=$true
             $script:bmNextBootName = $bmBootManagerGrid.Rows[$_.rowIndex].Cells[3].Value
+            
         } else {
             Write-Host "Next boot wurde $($rowIndex + 1) deaktiviert."
             $cell.Value=$false
@@ -333,13 +270,49 @@ $bmForm.StartPosition = $CenterScreen;
 $bmBootManagerGrid.AllowuserToResizeRows = $False
 $bmBootManagerGrid.ScrollBars = 0
 
+
+'''
+Aproach to handle check box 
+It is working bit with porblems and
+'''
+'''
+$bmBootManagerGrid.Add_CellPainting({
+    Param(
+        [Object]
+        $sender,
+        [System.Windows.Forms.DataGridViewCellPaintingEventArgs]
+        $e
+    )
+    if ($e.RowIndex -ge 0 -and $e.ColumnIndex -ge 0) {        
+        $dgv = [System.Windows.Forms.DataGridView]$sender
+        if( $dgv.columns[$e.ColumnIndex].GetType() -eq [System.Windows.Forms.DataGridViewCheckBoxColumn] ) {             
+             
+                if ($e.Value -eq $true -and $e.FormattedValue -eq $True) {                    
+                $newValue = [System.Windows.Forms.ButtonState]::Checked
+                } else {
+                $newValue = [System.Windows.Forms.ButtonState]::Normal
+                }                
+                $e.PaintBackground($e.CellBounds, $true)             
+                [System.Windows.Forms.ControlPaint]::DrawCheckBox($e.Graphics, 
+                    $e.CellBounds.X + 1, 
+                    $e.CellBounds.Y + 1, 
+                    $e.CellBounds.Width - 2, 
+                    $e.CellBounds.Height - 2,
+                    $newValue)
+            # Write-Host $e.CellBounds.X
+            $e.Handled = $true
+        }        
+    }   
+})
+'''
+
 function recalcSize {
     Param(        
         [parameter(HelpMessage="Init first")]
         [switch]
         $Init = $False
     )
- 
+  
     if ($Init) {
         # Start calculate size
         $bmForm.Width = $bmBootManagerGrid.Width
@@ -367,7 +340,11 @@ function recalcSize {
     $newHeaderFont = New-Object System.Drawing.Font($bmBootManagerGrid.ColumnHeadersDefaultCellStyle.Font.FontFamily,
                                                     $newFontSize,
                                                     $bmBootManagerGrid.ColumnHeadersDefaultCellStyle.Font.Style)    
-    $bmBootManagerGrid.DefaultCellStyle.Font = $newFont    
+    $bmBootManagerGrid.DefaultCellStyle.Font = $newFont
+    
+    # for($i=0;$i -lt $bmBootManagerGrid.RowCount;$i++) {
+    #    Write-Host ([System.Windows.Forms.DataGridViewCheckBoxCell]$bmBootManagerGrid.rows[$i].Cells[1])
+    #}
 
     $bmBootManagerGrid.ColumnHeadersDefaultCellStyle.Font = $newHeaderFont   
     $bmBootManagerGrid.ColumnHeadersHeight = $cellHeight
@@ -386,8 +363,9 @@ function recalcSize {
 
     $bmOkButton.Left = $bmForm.Width - ( $bmOkButton.Width + 30 )
     $bmCancelButton.Left = $bmOkButton.Left - ( $bmCancelButton.Width + 10 )
-    $bmOkButton.Top = $bmBootManagerGrid.Height + 5
-    $bmCancelButton.Top = $bmBootManagerGrid.Height + 5    
+    $bmOkButton.Top = $bmBootManagerGrid.Height + 5    
+    $bmCancelButton.Top = $bmBootManagerGrid.Height + 5  
+       
 }
 
 
@@ -401,7 +379,7 @@ $bmForm.Add_MouseWheel({
         if ($e.Delta -gt 0) {            
            $bmForm.Height += 10
         } else {
-            $bmForm.Height -= 10
+           $bmForm.Height -= 10
         }
     }    
 })
