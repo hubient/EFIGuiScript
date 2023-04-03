@@ -294,7 +294,7 @@ prepateEFIList "${StandardBoot}" "${NextBoot}"  |
 yad --title "$(TR G_TITLE 'Next and Standard boot')"  \
     --width=${WIDTH} --height=${HEIGHT} \
     --on-top --center \
-    --window-icon="${PRGPATH}/EFIGuiScript.png" \
+    --window-icon="${PRGPATH}/chooseEFIBoot.png" \
     --list  \
     --columns=4 \
     --column="$(TR G_COL1_TITLE 'Next boot')":RD \
